@@ -1,0 +1,91 @@
+%%writefile app.py
+'''
+RUN COMMAND: !streamlit run app.py & npx localtunnel --port 8501
+To get IP end point: 
+import urllib
+print("Password/Enpoint IP for localtunnel is:",urllib.request.urlopen('https://ipv4.icanhazip.com').read().decode('utf8').strip("\n"))
+Replace the TODO 
+'''
+import requests
+import streamlit as st
+from googleapiclient.discovery import build
+import matplotlib.pyplot as plt
+
+GOOGLE_API_KEY = 'TODO:ADD YOURS'
+HUGGING_FACE_TOKEN = "TODO: ADD YOURS"
+
+#MODEL
+def sentiment_analysis_model(comment_payload):
+  API_URL = "https://api-inference.huggingface.co/models/lxyuan/distilbert-base-multilingual-cased-sentiments-student"
+  headers = {"Authorization": f"Bearer {HUGGING_FACE_TOKEN}"}
+  response = requests.post(API_URL, headers=headers, json=comment_payload)
+  return response.json()
+
+#Extracts the comments in list format. 
+#YOUTUBE
+def video_comments(video_id):
+    # empty list for storing reply
+    replies = []
+
+    # creating youtube resource object
+    youtube = build('youtube', 'v3',
+                    developerKey=GOOGLE_API_KEY)
+
+    # retrieve youtube video results. By default it will return 20 results
+    video_response=youtube.commentThreads().list(
+    part='snippet',
+    videoId=video_id,
+    textFormat='plainText'
+    ).execute()
+    items = video_response['items']
+    comments = []
+    for item in items:
+      comments.append(item['snippet']['topLevelComment']['snippet']['textDisplay'])
+    return comments
+
+# returns the overall sentiment
+def post_process_result(comment_by_result_map):
+  total_score = [0,0,0]
+  for comment in comment_by_result_map.keys():
+    #st.write(comment, comment_by_result_map[comment])
+    result = comment_by_result_map[comment][0]
+    for data in result:
+      if data['label'] == 'negative':
+        total_score[0] += data['score']
+      elif data['label'] == 'positive':
+        total_score[1] += data['score']
+      else:
+        total_score[2] += data['score']
+
+  st.write(total_score)
+  size = len(comment_by_result_map)
+  labels = ['negative', 'positive','neutral']
+  normalized_score = [element/size for element in total_score]
+  st.write(normalized_score)
+  st.set_option('deprecation.showPyplotGlobalUse', False)
+  plt.pie(normalized_score, labels=labels, autopct="%1.1f%%")
+  plt.title("Sentiment Analysis")
+  st.pyplot()
+
+#HTML code for the webapp
+def GetHTML():
+	string = "<html><head></head><body style='color:red';><h1 style='align:center;'> How's the video?!! </h1></body></html>"
+	return string
+
+def youtube_comments_sentiment_analysis():
+  html_string = GetHTML()
+  st.markdown(html_string,unsafe_allow_html=True)
+  video_id = st.text_input('YOUTUBE VIDEO ID')
+  if(len(video_id) == 0):
+    return
+  comments = video_comments(video_id)
+  comment_by_result_map = {}
+  for comment in comments:
+    sentiment_result = sentiment_analysis_model(comment)
+    comment_by_result_map[comment] = sentiment_result
+  post_process_result(comment_by_result_map)
+  st.balloons()
+  return
+
+if __name__=="__main__":
+	youtube_comments_sentiment_analysis()
